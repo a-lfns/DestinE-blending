@@ -97,10 +97,20 @@ def run_pipeline(cfg: DictConfig) -> None:
     log.info("--------------------------------------------------------------------")
     log.info("2a. DestinE data - download and preprocess")
     log.info("--------------------------------------------------------------------")
-    destine_file, destine_date = run_download_destine(date, cfg, dirs)
-    destine_nlgrid_blend = load_and_preprocess_destine(
-        destine_file, destine_date, cfg, dirs, R_xr
-    )
+    if cfg.settings.multi_model:
+        try:
+            destine_file, destine_date = run_download_destine(date, cfg, dirs)
+            destine_nlgrid_blend = load_and_preprocess_destine(
+                destine_file, destine_date, cfg, dirs, R_xr
+            )
+        except:
+            if not cfg.settings.multi_model:
+                log.info(f"DestinE data not available for date == {date}, aborting script")
+                sys.exit(1)
+            else:
+                log.info(f"DestinE data not available for date == {date}, continuing with IFS only")
+                Extremes_DT_downloaded = False
+
 
     if cfg.settings.multi_model:
         log.info("--------------------------------------------------------------------")
@@ -170,16 +180,30 @@ def run_pipeline(cfg: DictConfig) -> None:
     log.info("--------------------------------------------------------------------")
     log.info("4. Organise metadata and data...    ")
     log.info("--------------------------------------------------------------------")
-    # organise the metadata
-    destine_nlgrid_blend_metadata = metadata_radar
-    destine_nlgrid_blend_metadata["timestamps"] = destine_nlgrid_blend.time.values
-    destine_nlgrid_blend_metadata["institution"] = destine_nlgrid_blend.institution
-    destine_nlgrid_blend_metadata["unit"] = "mm/h"
-    destine_nlgrid_blend_metadata["threshold"] = float(0.1)
-    metadata_radar["transform"] = None
-    metadata_DGMR = metadata_radar
-    # Log-transform the data
-    metadata_radar["timestamps"] = destine_nlgrid_blend_metadata["timestamps"]
+    if cfg.settings.multi_model == False:
+        # organise the metadata
+        destine_nlgrid_blend_metadata = metadata_radar
+        destine_nlgrid_blend_metadata['timestamps'] = destine_nlgrid_blend.time.values
+        destine_nlgrid_blend_metadata['institution'] = destine_nlgrid_blend.institution
+        destine_nlgrid_blend_metadata['unit'] = 'mm/h'
+        destine_nlgrid_blend_metadata['threshold'] = float(0.1)
+        metadata_radar['transform'] = None
+        metadata_DGMR = metadata_radar
+        # Log-transform the data
+        metadata_radar['timestamps'] = destine_nlgrid_blend_metadata['timestamps']
+
+    if cfg.settings.multi_model == True or cfg.settings.multi_model == IFS:
+        # organise the metadata
+        IFS_nlgrid_blend_metadata = metadata_radar
+        IFS_nlgrid_blend_metadata['timestamps'] = IFS_nlgrid_blend.time.values
+        # IFS_nlgrid_blend_metadata['institution'] = IFS_nlgrid_blend.institution
+        IFS_nlgrid_blend_metadata['unit'] = 'mm/h'
+        IFS_nlgrid_blend_metadata['threshold'] = float(0.1)
+        metadata_radar['transform'] = None
+        metadata_DGMR = metadata_radar
+        # Log-transform the data
+        metadata_radar['timestamps'] = IFS_nlgrid_blend_metadata['timestamps']
+
     DGMR_det_db, metadata_radar_db = transformation.dB_transform(
         DGMR_det, metadata_radar, threshold=0.1, zerovalue=-15.0
     )
