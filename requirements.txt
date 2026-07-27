@@ -21,7 +21,7 @@ cfgrib==0.9.15.1
 pyproj==3.7.1
 rasterio==1.4.3
 shapely==2.1.2
-geopandas==1.1.1
+geopandas==1.1.2
 ecmwf-api-client==1.6.5
 
 # TensorFlow stack
@@ -36,3 +36,9 @@ cdo==1.6.0
 netCDF4==1.7.2
 joblib==1.5.2
 scoringrules==0.8.0
+
+# extra requirements for fixing vulnerabilities
+jaraco.context==6.1.0
+keras==3.13.2
+wheel==0.46.2
+geopandas==1.1.2

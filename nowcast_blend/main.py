@@ -2,6 +2,9 @@ from datetime import datetime, timezone
 import time
 from zipfile import Path
 import os
+import sys
+import  xarray as xr
+import numpy as np
 
 import pysteps
 from pysteps.utils import transformation
@@ -16,6 +19,7 @@ from nowcast_blend.download.refresh_token_HL import HLAuthClient
 from nowcast_blend.download.load_ecmwf_HL import download_ecmwf_15day_HL
 from nowcast_blend.preprocess.preprocess_radar import load_and_preprocess_radar
 from nowcast_blend.preprocess.preprocess_destine import load_and_preprocess_destine
+from nowcast_blend.preprocess.preprocess_ifs import pre_process_ifs_data, pre_process_ifs_HL_data
 from nowcast_blend.nowcast.dgmr_orchestration import load_or_generate_dgmr_ensemble
 from nowcast_blend.postprocess.ensemble_probabilities_destine import ensemble_probabilities_destine
 from nowcast_blend.machine_learning.machine_learning import (
@@ -136,19 +140,20 @@ def run_pipeline(cfg: DictConfig) -> None:
         if not os.path.exists(ifs_zip_HL):
             log.info(f"downloading ifs HydroNet zip: {ifs_zip_HL}")
             download_ecmwf_15day_HL(http_header, date, output_zip=ifs_zip_HL)
-        elif verb:
+        else:
             log.info(f"ifs HydroNet zip already downloaded: {ifs_zip_HL}")
 
         if not os.path.exists(ifs_file_HL_nc):
             log.info(f"preprocessing ifs HydroNet GeoTIFFs -> {ifs_file_HL_nc}")
             pre_process_ifs_HL_data(ifs_zip_HL, ifs_file_HL_nc)
-        elif verb:
+
+        else:
             log.info(f"ifs HydroNet netcdf already exists: {ifs_file_HL_nc}")
 
         # downscale + advection-correct + regrid onto the KNMI radar grid
         IFS_nlgrid_blend = pre_process_ifs_data(
             ifs_file_HL_nc, ifs_file_preprocessed, cfg, date,
-            cfg.settings.timestep_interval, cfg.settings.timesteps, radar_path, R_xr)
+            cfg.settings.timestep_interval, cfg.settings.timesteps, str(dirs.radar), R_xr)
 
     log.info("--------------------------------------------------------------------")
     log.info("3. DGMR...    ")
@@ -195,7 +200,7 @@ def run_pipeline(cfg: DictConfig) -> None:
         # Log-transform the data
         metadata_radar['timestamps'] = destine_nlgrid_blend_metadata['timestamps']
 
-    if cfg.settings.multi_model == True or cfg.settings.multi_model == IFS:
+    if cfg.settings.multi_model == True or cfg.settings.multi_model == 'IFS':
         # organise the metadata
         IFS_nlgrid_blend_metadata = metadata_radar
         IFS_nlgrid_blend_metadata['timestamps'] = IFS_nlgrid_blend.time.values
@@ -217,7 +222,7 @@ def run_pipeline(cfg: DictConfig) -> None:
         R_xr.precip_intensity.values, metadata_radar
     )
 
-    #after this block, evn if multi-model is True or 'IFS', the destine_nlgrid_blend_xxx variables names are used. 
+    #after this block, even if multi-model is True or 'IFS', the destine_nlgrid_blend_xxx variables names are used. 
     if cfg.settings.multi_model  == True:
         if Extremes_DT_downloaded == True:
             # Stack DestinE (deterministic, one member) and the three IFS percentile members
