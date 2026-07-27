@@ -97,19 +97,21 @@ def run_pipeline(cfg: DictConfig) -> None:
     log.info("--------------------------------------------------------------------")
     log.info("2a. DestinE data - download and preprocess")
     log.info("--------------------------------------------------------------------")
-    if cfg.settings.multi_model:
-        try:
-            destine_file, destine_date = run_download_destine(date, cfg, dirs)
-            destine_nlgrid_blend = load_and_preprocess_destine(
-                destine_file, destine_date, cfg, dirs, R_xr
-            )
-        except:
-            if not cfg.settings.multi_model:
-                log.info(f"DestinE data not available for date == {date}, aborting script")
-                sys.exit(1)
-            else:
-                log.info(f"DestinE data not available for date == {date}, continuing with IFS only")
-                Extremes_DT_downloaded = False
+    try:
+        Extremes_DT_downloaded = True
+        destine_file, destine_date = run_download_destine(date, cfg, dirs)
+        destine_nlgrid_blend = load_and_preprocess_destine(
+            destine_file, destine_date, cfg, dirs, R_xr
+        )
+    except:
+        if not cfg.settings.multi_model:
+            log.info(f"DestinE data not available for date == {date}, aborting script")
+            sys.exit(1)
+        else:
+            log.info(f"DestinE data not available for date == {date}, continuing with IFS only")
+            Extremes_DT_downloaded = False
+
+    
 
 
     if cfg.settings.multi_model:
