@@ -213,13 +213,44 @@ def run_pipeline(cfg: DictConfig) -> None:
     radar_precip, metadata_radar = converter(
         R_xr.precip_intensity.values, metadata_radar
     )
-    if cfg.settings.multi_model == True:
-        log.warning(f"Multi_model mode not implemented")
-        # destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(IFS_ExtremesDT_blend.tp.values, destine_nlgrid_blend_metadata)
-    else:
+
+    #after this block, evn if multi-model is True or 'IFS', the destine_nlgrid_blend_xxx variables names are used. 
+    if cfg.settings.multi_model  == True:
+        if Extremes_DT_downloaded == True:
+            # Stack DestinE (deterministic, one member) and the three IFS percentile members
+            # along a shared 'ensemble' axis, giving the (n_models, time, y, x) the blending
+            # expects. DestinE lands at index 0.
+            ifs_blend = IFS_nlgrid_blend.transpose('ensemble', 'time', 'y', 'x')
+            destine_ens = destine_nlgrid_blend.assign_coords(ensemble=51.0).expand_dims(dim='ensemble', axis=0)
+
+            # concat would silently outer-join a mismatched time axis into NaN-padded models
+            destine_times = destine_ens['time'].values
+            ifs_times = ifs_blend['time'].values
+            if not np.array_equal(destine_times, ifs_times):
+                raise ValueError(
+                    f"DestinE and IFS time axes differ, refusing to combine them. "
+                    f"DestinE: {destine_times[0]} - {destine_times[-1]} (n={len(destine_times)}); "
+                    f"IFS: {ifs_times[0]} - {ifs_times[-1]} (n={len(ifs_times)})"
+                )
+
+            IFS_ExtremesDT_blend = xr.concat([destine_ens, ifs_blend], dim='ensemble', join='exact')
+            log.info(
+                f"multi-model NWP stack: {dict(IFS_ExtremesDT_blend.sizes)}, "
+                f"ensemble labels {IFS_ExtremesDT_blend.ensemble.values} (51=DestinE, rest=IFS percentiles)"
+            )
+            destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(IFS_ExtremesDT_blend.tp.values, destine_nlgrid_blend_metadata)
+        else:
+            ifs_blend = IFS_nlgrid_blend.transpose('ensemble', 'time', 'y', 'x')
+            destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(ifs_blend.tp.values, IFS_nlgrid_blend_metadata)
+            # concat would silently outer-join a mismatched time axis into NaN-padded models
+            
+
+    elif cfg.settings.multi_model  == 'IFS':
         destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(
-            destine_nlgrid_blend.tp.values, destine_nlgrid_blend_metadata
-        )
+            IFS_nlgrid_blend.transpose('ensemble', 'time', 'y', 'x').tp.values, IFS_nlgrid_blend_metadata)
+    else:
+        destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(destine_nlgrid_blend.tp.values, destine_nlgrid_blend_metadata)
+
 
     # Threshold the data
     radar_precip[radar_precip < 0.1] = 0.0
