@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 import time
 from zipfile import Path
 import os
-import sys
 import  xarray as xr
 import numpy as np
 
@@ -72,7 +71,7 @@ def run_pipeline(cfg: DictConfig) -> None:
         file_name = "_pysteps_nowcast"
         weights_suffix = "_weights"
     else:
-        multi_extention = "_IFS" if cfg.settings.multi_model else ""
+        multi_extention = "_IFS" if cfg.settings.model_used != "ExtremesDT" else ""
         custom_weights_extention = (
             "_optimised_weights" if cfg.settings.custom_weights else ""
         )
@@ -101,25 +100,24 @@ def run_pipeline(cfg: DictConfig) -> None:
     log.info("--------------------------------------------------------------------")
     log.info("2a. DestinE data - download and preprocess")
     log.info("--------------------------------------------------------------------")
-    if not cfg.settings.multi_model == 'IFS':
+    Extremes_DT_downloaded = False
+    if cfg.settings.model_used != 'IFS':
         try:
-            Extremes_DT_downloaded = True
             destine_file, destine_date = run_download_destine(date, cfg, dirs)
             destine_nlgrid_blend = load_and_preprocess_destine(
                 destine_file, destine_date, cfg, dirs, R_xr
             )
-        except:
-            if not cfg.settings.multi_model:
-                log.info(f"DestinE data not available for date == {date}, aborting script")
-                sys.exit(1)
-            else:
-                log.info(f"DestinE data not available for date == {date}, continuing with IFS only")
-                Extremes_DT_downloaded = False
-
-    
+            Extremes_DT_downloaded = True
+        except Exception:
+            if cfg.settings.model_used == 'ExtremesDT':
+                log.exception(f"DestinE data not available for date == {date}, aborting script")
+                raise
+            log.warning(f"DestinE data not available for date == {date}, continuing with IFS only")
 
 
-    if cfg.settings.multi_model:
+
+
+    if cfg.settings.model_used != 'ExtremesDT':
         log.info("--------------------------------------------------------------------")
         log.info("2b. IFS data - download if needed and preprocess:")
         log.info("--------------------------------------------------------------------")
@@ -188,7 +186,7 @@ def run_pipeline(cfg: DictConfig) -> None:
     log.info("--------------------------------------------------------------------")
     log.info("4. Organise metadata and data...    ")
     log.info("--------------------------------------------------------------------")
-    if cfg.settings.multi_model == False:
+    if cfg.settings.model_used == 'ExtremesDT':
         # organise the metadata
         destine_nlgrid_blend_metadata = metadata_radar
         destine_nlgrid_blend_metadata['timestamps'] = destine_nlgrid_blend.time.values
@@ -200,7 +198,7 @@ def run_pipeline(cfg: DictConfig) -> None:
         # Log-transform the data
         metadata_radar['timestamps'] = destine_nlgrid_blend_metadata['timestamps']
 
-    if cfg.settings.multi_model == True or cfg.settings.multi_model == 'IFS':
+    if cfg.settings.model_used == 'multi-model' or cfg.settings.model_used == 'IFS':
         # organise the metadata
         IFS_nlgrid_blend_metadata = metadata_radar
         IFS_nlgrid_blend_metadata['timestamps'] = IFS_nlgrid_blend.time.values
@@ -223,7 +221,7 @@ def run_pipeline(cfg: DictConfig) -> None:
     )
 
     #after this block, even if multi-model is True or 'IFS', the destine_nlgrid_blend_xxx variables names are used. 
-    if cfg.settings.multi_model  == True:
+    if cfg.settings.model_used == 'multi-model':
         if Extremes_DT_downloaded == True:
             # Stack DestinE (deterministic, one member) and the three IFS percentile members
             # along a shared 'ensemble' axis, giving the (n_models, time, y, x) the blending
@@ -253,7 +251,7 @@ def run_pipeline(cfg: DictConfig) -> None:
             # concat would silently outer-join a mismatched time axis into NaN-padded models
             
 
-    elif cfg.settings.multi_model  == 'IFS':
+    elif cfg.settings.model_used == 'IFS':
         destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(
             IFS_nlgrid_blend.transpose('ensemble', 'time', 'y', 'x').tp.values, IFS_nlgrid_blend_metadata)
     else:
