@@ -39,5 +39,4 @@ scoringrules==0.8.0
 
 # extra requirements for fixing vulnerabilities
 jaraco.context==6.1.0
-keras==3.13.2
 wheel==0.46.2
