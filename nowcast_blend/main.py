@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 import time
 from zipfile import Path
 import os
+import  xarray as xr
+import numpy as np
 
 import pysteps
 from pysteps.utils import transformation
@@ -16,6 +18,7 @@ from nowcast_blend.download.refresh_token_HL import HLAuthClient
 from nowcast_blend.download.load_ecmwf_HL import download_ecmwf_15day_HL
 from nowcast_blend.preprocess.preprocess_radar import load_and_preprocess_radar
 from nowcast_blend.preprocess.preprocess_destine import load_and_preprocess_destine
+from nowcast_blend.preprocess.preprocess_ifs import pre_process_ifs_data, pre_process_ifs_HL_data
 from nowcast_blend.nowcast.dgmr_orchestration import load_or_generate_dgmr_ensemble
 from nowcast_blend.postprocess.ensemble_probabilities_destine import ensemble_probabilities_destine
 from nowcast_blend.machine_learning.machine_learning import (
@@ -68,7 +71,7 @@ def run_pipeline(cfg: DictConfig) -> None:
         file_name = "_pysteps_nowcast"
         weights_suffix = "_weights"
     else:
-        multi_extention = "_IFS" if cfg.settings.multi_model else ""
+        multi_extention = "_IFS" if cfg.settings.model_used != "ExtremesDT" else ""
         custom_weights_extention = (
             "_optimised_weights" if cfg.settings.custom_weights else ""
         )
@@ -97,12 +100,24 @@ def run_pipeline(cfg: DictConfig) -> None:
     log.info("--------------------------------------------------------------------")
     log.info("2a. DestinE data - download and preprocess")
     log.info("--------------------------------------------------------------------")
-    destine_file, destine_date = run_download_destine(date, cfg, dirs)
-    destine_nlgrid_blend = load_and_preprocess_destine(
-        destine_file, destine_date, cfg, dirs, R_xr
-    )
+    Extremes_DT_downloaded = False
+    if cfg.settings.model_used != 'IFS':
+        try:
+            destine_file, destine_date = run_download_destine(date, cfg, dirs)
+            destine_nlgrid_blend = load_and_preprocess_destine(
+                destine_file, destine_date, cfg, dirs, R_xr
+            )
+            Extremes_DT_downloaded = True
+        except Exception:
+            if cfg.settings.model_used == 'ExtremesDT':
+                log.exception(f"DestinE data not available for date == {date}, aborting script")
+                raise
+            log.warning(f"DestinE data not available for date == {date}, continuing with IFS only")
 
-    if cfg.settings.multi_model:
+
+
+
+    if cfg.settings.model_used != 'ExtremesDT':
         log.info("--------------------------------------------------------------------")
         log.info("2b. IFS data - download if needed and preprocess:")
         log.info("--------------------------------------------------------------------")
@@ -123,19 +138,20 @@ def run_pipeline(cfg: DictConfig) -> None:
         if not os.path.exists(ifs_zip_HL):
             log.info(f"downloading ifs HydroNet zip: {ifs_zip_HL}")
             download_ecmwf_15day_HL(http_header, date, output_zip=ifs_zip_HL)
-        elif verb:
+        else:
             log.info(f"ifs HydroNet zip already downloaded: {ifs_zip_HL}")
 
         if not os.path.exists(ifs_file_HL_nc):
             log.info(f"preprocessing ifs HydroNet GeoTIFFs -> {ifs_file_HL_nc}")
             pre_process_ifs_HL_data(ifs_zip_HL, ifs_file_HL_nc)
-        elif verb:
+
+        else:
             log.info(f"ifs HydroNet netcdf already exists: {ifs_file_HL_nc}")
 
         # downscale + advection-correct + regrid onto the KNMI radar grid
         IFS_nlgrid_blend = pre_process_ifs_data(
             ifs_file_HL_nc, ifs_file_preprocessed, cfg, date,
-            cfg.settings.timestep_interval, cfg.settings.timesteps, radar_path, R_xr)
+            cfg.settings.timestep_interval, cfg.settings.timesteps, str(dirs.radar), R_xr)
 
     log.info("--------------------------------------------------------------------")
     log.info("3. DGMR...    ")
@@ -170,16 +186,30 @@ def run_pipeline(cfg: DictConfig) -> None:
     log.info("--------------------------------------------------------------------")
     log.info("4. Organise metadata and data...    ")
     log.info("--------------------------------------------------------------------")
-    # organise the metadata
-    destine_nlgrid_blend_metadata = metadata_radar
-    destine_nlgrid_blend_metadata["timestamps"] = destine_nlgrid_blend.time.values
-    destine_nlgrid_blend_metadata["institution"] = destine_nlgrid_blend.institution
-    destine_nlgrid_blend_metadata["unit"] = "mm/h"
-    destine_nlgrid_blend_metadata["threshold"] = float(0.1)
-    metadata_radar["transform"] = None
-    metadata_DGMR = metadata_radar
-    # Log-transform the data
-    metadata_radar["timestamps"] = destine_nlgrid_blend_metadata["timestamps"]
+    if cfg.settings.model_used == 'ExtremesDT':
+        # organise the metadata
+        destine_nlgrid_blend_metadata = metadata_radar
+        destine_nlgrid_blend_metadata['timestamps'] = destine_nlgrid_blend.time.values
+        destine_nlgrid_blend_metadata['institution'] = destine_nlgrid_blend.institution
+        destine_nlgrid_blend_metadata['unit'] = 'mm/h'
+        destine_nlgrid_blend_metadata['threshold'] = float(0.1)
+        metadata_radar['transform'] = None
+        metadata_DGMR = metadata_radar
+        # Log-transform the data
+        metadata_radar['timestamps'] = destine_nlgrid_blend_metadata['timestamps']
+
+    if cfg.settings.model_used == 'multi-model' or cfg.settings.model_used == 'IFS':
+        # organise the metadata
+        IFS_nlgrid_blend_metadata = metadata_radar
+        IFS_nlgrid_blend_metadata['timestamps'] = IFS_nlgrid_blend.time.values
+        # IFS_nlgrid_blend_metadata['institution'] = IFS_nlgrid_blend.institution
+        IFS_nlgrid_blend_metadata['unit'] = 'mm/h'
+        IFS_nlgrid_blend_metadata['threshold'] = float(0.1)
+        metadata_radar['transform'] = None
+        metadata_DGMR = metadata_radar
+        # Log-transform the data
+        metadata_radar['timestamps'] = IFS_nlgrid_blend_metadata['timestamps']
+
     DGMR_det_db, metadata_radar_db = transformation.dB_transform(
         DGMR_det, metadata_radar, threshold=0.1, zerovalue=-15.0
     )
@@ -189,13 +219,44 @@ def run_pipeline(cfg: DictConfig) -> None:
     radar_precip, metadata_radar = converter(
         R_xr.precip_intensity.values, metadata_radar
     )
-    if cfg.settings.multi_model == True:
-        log.warning(f"Multi_model mode not implemented")
-        # destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(IFS_ExtremesDT_blend.tp.values, destine_nlgrid_blend_metadata)
-    else:
+
+    #after this block, even if multi-model is True or 'IFS', the destine_nlgrid_blend_xxx variables names are used. 
+    if cfg.settings.model_used == 'multi-model':
+        if Extremes_DT_downloaded == True:
+            # Stack DestinE (deterministic, one member) and the three IFS percentile members
+            # along a shared 'ensemble' axis, giving the (n_models, time, y, x) the blending
+            # expects. DestinE lands at index 0.
+            ifs_blend = IFS_nlgrid_blend.transpose('ensemble', 'time', 'y', 'x')
+            destine_ens = destine_nlgrid_blend.assign_coords(ensemble=51.0).expand_dims(dim='ensemble', axis=0)
+
+            # concat would silently outer-join a mismatched time axis into NaN-padded models
+            destine_times = destine_ens['time'].values
+            ifs_times = ifs_blend['time'].values
+            if not np.array_equal(destine_times, ifs_times):
+                raise ValueError(
+                    f"DestinE and IFS time axes differ, refusing to combine them. "
+                    f"DestinE: {destine_times[0]} - {destine_times[-1]} (n={len(destine_times)}); "
+                    f"IFS: {ifs_times[0]} - {ifs_times[-1]} (n={len(ifs_times)})"
+                )
+
+            IFS_ExtremesDT_blend = xr.concat([destine_ens, ifs_blend], dim='ensemble', join='exact')
+            log.info(
+                f"multi-model NWP stack: {dict(IFS_ExtremesDT_blend.sizes)}, "
+                f"ensemble labels {IFS_ExtremesDT_blend.ensemble.values} (51=DestinE, rest=IFS percentiles)"
+            )
+            destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(IFS_ExtremesDT_blend.tp.values, destine_nlgrid_blend_metadata)
+        else:
+            ifs_blend = IFS_nlgrid_blend.transpose('ensemble', 'time', 'y', 'x')
+            destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(ifs_blend.tp.values, IFS_nlgrid_blend_metadata)
+            # concat would silently outer-join a mismatched time axis into NaN-padded models
+            
+
+    elif cfg.settings.model_used == 'IFS':
         destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(
-            destine_nlgrid_blend.tp.values, destine_nlgrid_blend_metadata
-        )
+            IFS_nlgrid_blend.transpose('ensemble', 'time', 'y', 'x').tp.values, IFS_nlgrid_blend_metadata)
+    else:
+        destine_nlgrid_blend_val, destine_nlgrid_blend_metadata = converter(destine_nlgrid_blend.tp.values, destine_nlgrid_blend_metadata)
+
 
     # Threshold the data
     radar_precip[radar_precip < 0.1] = 0.0
