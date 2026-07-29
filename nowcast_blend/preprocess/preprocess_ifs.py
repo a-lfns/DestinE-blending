@@ -79,6 +79,10 @@ def pre_process_ifs_HL_data(ifs_zip_HL, ifs_file_HL_nc):
     """
     import rasterio
 
+    # callers pass pathlib.Path; the string handling below (and cdo further down) needs str
+    ifs_zip_HL = os.fspath(ifs_zip_HL)
+    ifs_file_HL_nc = os.fspath(ifs_file_HL_nc)
+
     extract_dir = ifs_zip_HL[:-4] if ifs_zip_HL.endswith(".zip") else ifs_zip_HL + "_extracted"
     log.info(f"Extracting {ifs_zip_HL} -> {extract_dir}")
     with zipfile.ZipFile(ifs_zip_HL) as zf:
@@ -194,7 +198,7 @@ def _ifs_slice_to_blend(ifs_nlgrid, R_xr, timestep_interval, timesteps, source_f
     return IFS_nlgrid_blend
 
 
-def pre_process_ifs_data(ifs_file_HL_nc, ifs_file_preprocessed, cfg, date, timestep_interval, timesteps, radar_path, R_xr):
+def pre_process_ifs_data(ifs_file_HL_nc, ifs_file_preprocessed, cfg, date, timestep_interval, timesteps, radar_path, R_xr, knmi_grid_file=None):
     """Downscale, advection-correct and regrid the HydroNet IFS forecast onto the KNMI radar grid.
 
     Takes the combined netCDF written by ``pre_process_ifs_HL_data`` (``tp`` with dims
@@ -205,6 +209,10 @@ def pre_process_ifs_data(ifs_file_HL_nc, ifs_file_preprocessed, cfg, date, times
     (already mm, not m), no de-accumulation (already hourly increments, not cumulative) and
     no percentile selection (the API returns the three percentiles directly).
     """
+    # callers pass pathlib.Path; the .replace() string surgery below (and cdo) needs str
+    ifs_file_HL_nc = os.fspath(ifs_file_HL_nc)
+    ifs_file_preprocessed = os.fspath(ifs_file_preprocessed)
+
     if os.path.exists(ifs_file_preprocessed):
         if cfg.settings.verbose:
             log.info(f"pre-processed IFS file found: {ifs_file_preprocessed}")
