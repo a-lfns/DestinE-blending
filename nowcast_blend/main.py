@@ -151,7 +151,8 @@ def run_pipeline(cfg: DictConfig) -> None:
         # downscale + advection-correct + regrid onto the KNMI radar grid
         IFS_nlgrid_blend = pre_process_ifs_data(
             ifs_file_HL_nc, ifs_file_preprocessed, cfg, date,
-            cfg.settings.timestep_interval, cfg.settings.timesteps, str(dirs.radar), R_xr)
+            cfg.settings.timestep_interval, cfg.settings.timesteps, str(dirs.radar), R_xr,
+            knmi_grid_file=str(dirs.resources / "knmi_grid.txt"))
 
     log.info("--------------------------------------------------------------------")
     log.info("3. DGMR...    ")
