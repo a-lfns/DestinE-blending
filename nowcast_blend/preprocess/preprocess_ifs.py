@@ -214,15 +214,13 @@ def pre_process_ifs_data(ifs_file_HL_nc, ifs_file_preprocessed, cfg, date, times
     ifs_file_preprocessed = os.fspath(ifs_file_preprocessed)
 
     if os.path.exists(ifs_file_preprocessed):
-        if cfg.settings.verbose:
-            log.info(f"pre-processed IFS file found: {ifs_file_preprocessed}")
+        log.info(f"pre-processed IFS file found: {ifs_file_preprocessed}")
         return _ifs_slice_to_blend(
             xr.open_dataset(ifs_file_preprocessed), R_xr, timestep_interval, timesteps,
             ifs_file_preprocessed,
         )
 
-    if cfg.settings.verbose:
-        log.info(f"preprocessing: {ifs_file_HL_nc}")
+    log.info(f"preprocessing: {ifs_file_HL_nc}")
 
     IFS_data_raw = xr.open_dataset(ifs_file_HL_nc)
     precipitation = IFS_data_raw['tp']  # (number, step, latitude, longitude), mm/h
