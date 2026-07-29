@@ -270,7 +270,6 @@ def pre_process_ifs_data(ifs_file_HL_nc, ifs_file_preprocessed, cfg, date, times
 
     log.info("starting: cdo_to_netcdf:")
     cdo_to_netcdf(
-        date=date,
         destinE_data=IFS_data_raw,
         destinE_data_cut=precipitation,
         numerical_data=IFS_nlgrid_hres_advected,
