@@ -122,12 +122,27 @@ def run_pipeline(cfg: DictConfig) -> None:
         log.info("2b. IFS data - download if needed and preprocess:")
         log.info("--------------------------------------------------------------------")
         ifs_init_time = closest_ecmwf_available(date)
+
+        # The new IFS runs only contain data from 01:00 UTC onwards. For runs between
+        # 00:00 and 01:00 UTC, today's IFS file has no data covering the run window yet,
+        # so use the previous day's IFS run (a 15-day forecast that still covers today).
+        if date.hour < 1:
+            ifs_date = date - timedelta(days=1)
+            log.info(
+                f"Run hour {date.hour:02d} UTC is before 01 UTC; the new IFS runs only "
+                f"contain data from 01 UTC onwards, so using the IFS run of {ifs_date:%Y-%m-%d}."
+            )
+        else:
+            ifs_date = date
+        ifs_date_str_day = ifs_date.strftime("%Y%m%d")
+        ifs_dir_hl = build_dirs(cfg, ifs_date).ifs
+        ifs_dir_hl.mkdir(parents=True, exist_ok=True)
+
         date_str = date.strftime('%Y%m%d%H')
-        date_str_day = date.strftime("%Y%m%d")
         # ifs HydroNet (15-day ensemble, GeoTIFF) paths:
         ifs_file_preprocessed = dirs.ifs / f'IFS_{date_str}_init{ifs_init_time}_{cfg.settings.param}_hres_interp_nlgrid_{cfg.settings.timestep_interval}_{cfg.settings.timesteps}.nc'
-        ifs_zip_HL = dirs.ifs / f"IFS_HL_15day_{date_str_day}_{cfg.settings.param}.zip"
-        ifs_file_HL_nc = dirs.ifs / f"IFS_HL_15day_{date_str_day}_{cfg.settings.param}.nc"
+        ifs_zip_HL = ifs_dir_hl / f"IFS_HL_15day_{ifs_date_str_day}_{cfg.settings.param}.zip"
+        ifs_file_HL_nc = ifs_dir_hl / f"IFS_HL_15day_{ifs_date_str_day}_{cfg.settings.param}.nc"
 
         # HydroNet 15-day ensemble (30/50/90 percentiles, GeoTIFF) download + preprocess
         secret = os.environ.get("HYDRONET_API_TOKEN")
@@ -137,7 +152,7 @@ def run_pipeline(cfg: DictConfig) -> None:
 
         if not os.path.exists(ifs_zip_HL):
             log.info(f"downloading ifs HydroNet zip: {ifs_zip_HL}")
-            download_ecmwf_15day_HL(http_header, date, output_zip=ifs_zip_HL)
+            download_ecmwf_15day_HL(http_header, ifs_date, output_zip=ifs_zip_HL)
         else:
             log.info(f"ifs HydroNet zip already downloaded: {ifs_zip_HL}")
 
