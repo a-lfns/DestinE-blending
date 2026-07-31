@@ -218,7 +218,7 @@ def run_pipeline(cfg: DictConfig) -> None:
         # organise the metadata
         IFS_nlgrid_blend_metadata = metadata_radar
         IFS_nlgrid_blend_metadata['timestamps'] = IFS_nlgrid_blend.time.values
-        # IFS_nlgrid_blend_metadata['institution'] = IFS_nlgrid_blend.institution
+        IFS_nlgrid_blend_metadata['institution'] = "European Centre for Medium-Range Weather Forecasts"
         IFS_nlgrid_blend_metadata['unit'] = 'mm/h'
         IFS_nlgrid_blend_metadata['threshold'] = float(0.1)
         metadata_radar['transform'] = None
