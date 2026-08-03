@@ -21,7 +21,6 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && pip install --no-cache-dir --timeout 300 -r requirements.txt \
     && apt-get purge -y build-essential \
     && apt-get autoremove -y \
-    && pip uninstall -y setuptools wheel pip \
     && rm -rf /var/lib/apt/lists/* /root/.cache /tmp/*
 
 COPY nowcast_blend ./nowcast_blend
