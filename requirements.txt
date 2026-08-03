@@ -1,6 +1,5 @@
 # Application config
 hydra-core==1.3.2
-setuptools==80.9.0
 jwt==1.4.0
 
 # Core scientific stack
@@ -26,6 +25,7 @@ ecmwf-api-client==1.6.5
 
 # TensorFlow stack
 tensorflow==2.20.0
+keras==3.13.2
 tensorflow-hub==0.16.1
 
 # pysteps (custom fork)
@@ -36,7 +36,3 @@ cdo==1.6.0
 netCDF4==1.7.2
 joblib==1.5.2
 scoringrules==0.8.0
-
-# extra requirements for fixing vulnerabilities
-jaraco.context==6.1.0
-wheel==0.46.2
