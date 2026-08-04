@@ -18,14 +18,10 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     libgomp1 \
     gdal-bin \
     libgdal-dev \
-    && pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir --timeout 300 -r requirements.txt \
     && apt-get purge -y build-essential \
     && apt-get autoremove -y \
     && python -m pip uninstall -y pip \
-    && rm -rf /usr/local/lib/python3.11/site-packages/pip \
-              /usr/local/lib/python3.11/site-packages/pip-*.dist-info \
-              /usr/local/lib/python3.11/ensurepip \
     && rm -rf /var/lib/apt/lists/* /root/.cache /tmp/*
 
 COPY nowcast_blend ./nowcast_blend
